@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>INFINITE TUNNEL — Scroll to Fly</title>
+<style>
+  :root{
+    --bg:#030014;
+    --cyan:#00f0ff;
+    --magenta:#ff2fd6;
+    --lime:#c8ff00;
+    --card:rgba(8,8,28,.72);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:#fff;
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    overflow-x:hidden;
+  }
+  #bg{
+    position:fixed;inset:0;
+    width:100%;height:100%;
+    display:block;z-index:0;
+  }
+  #vignette{
+    position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(ellipse at center,transparent 45%,rgba(0,0,10,.75) 100%);
+  }
+  #progress{
+    position:fixed;top:0;left:0;height:4px;width:0%;
+    background:linear-gradient(90deg,var(--cyan),var(--magenta),var(--lime));
+    z-index:50;box-shadow:0 0 12px var(--cyan);
+  }
+  #hud{
+    position:fixed;top:14px;right:16px;z-index:50;
+    font-size:12px;letter-spacing:.2em;text-transform:uppercase;
+    opacity:.8;background:rgba(0,0,0,.45);
+    border:1px solid rgba(0,240,255,.4);
+    padding:8px 12px;border-radius:999px;
+    backdrop-filter:blur(8px);
+  }
+  #hud b{color:var(--cyan)}
+  main{position:relative;z-index:2}
+  section.stage{
+    position:relative;
+    min-height:100vh;min-height:100svh;
+    width:100%;
+  }
+  .card{
+    position:absolute;
+    top:50%;left:50%;
+    transform:translate(-50%,-50%) translateY(60px) scale(.96);
+    width:min(560px,88vw);
+    background:var(--card);
+    border:1px solid rgba(0,240,255,.35);
+    border-radius:20px;
+    padding:clamp(20px,4vw,44px);
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+    box-shadow:0 20px 80px rgba(0,0,0,.6),0 0 40px rgba(0,240,255,.12) inset;
+    opacity:0;
+    filter:blur(8px);
+    transition:opacity .8s ease,transform .8s cubic-bezier(.2,.9,.25,1.2),filter .8s ease,border-color .4s;
+    pointer-events:none;
+  }
+  .card.visible{
+    opacity:1;filter:blur(0);
+    transform:translate(-50%,-50%) translateY(0) scale(1);
+    pointer-events:auto;
+  }
+  /* alternate left / right punch on desktop */
+  section.stage:nth-child(even) .card{left:12%}
+  section.stage:nth-child(odd) .card{left:88%}
+  section.stage:first-child .card,
+  section.stage:last-child .card{left:50%}
+  .kicker{
+    display:inline-block;
+    font-size:12px;letter-spacing:.3em;text-transform:uppercase;
+    color:var(--lime);margin-bottom:12px;
+    border:1px solid rgba(200,255,0,.4);
+    padding:6px 12px;border-radius:999px;
+  }
+  h1,h2{
+    font-size:clamp(2rem,6vw,4.2rem);
+    line-height:.95;font-weight:900;
+    text-transform:uppercase;
+    margin-bottom:14px;
+  }
+  h1 .cy{color:var(--cyan);text-shadow:0 0 24px var(--cyan)}
+  h1 .mg{color:var(--magenta);text-shadow:0 0 24px var(--magenta)}
+  h2{font-size:clamp(1.6rem,4.5vw,3rem)}
+  p{opacity:.85;line-height:1.6;font-size:clamp(.95rem,1.6vw,1.12rem)}
+  .stat{
+    display:flex;gap:12px;margin-top:18px;
+    font-variant-numeric:tabular-nums;
+    font-weight:800;font-size:clamp(1.4rem,3vw,2.2rem);
+  }
+  .stat span{color:var(--cyan)}
+  .scroll-hint{
+    margin-top:22px;display:flex;align-items:center;gap:10px;
+    font-size:12px;letter-spacing:.25em;text-transform:uppercase;opacity:.7;
+  }
+  .wheel{
+    width:24px;height:38px;border:2px solid #fff;border-radius:14px;position:relative;
+  }
+  .wheel::after{
+    content:"";position:absolute;left:50%;top:6px;width:4px;height:8px;
+    background:var(--cyan);border-radius:4px;transform:translateX(-50%);
+    animation:wheel 1.4s infinite;
+  }
+  @keyframes wheel{0%{top:6px;opacity:1}100%{top:20px;opacity:0}}
+  #finale{ text-align:center }
+  #finale .card{border-color:rgba(255,47,214,.5)}
+  button{
+    margin-top:20px;cursor:pointer;
+    background:linear-gradient(90deg,var(--cyan),var(--magenta));
+    border:0;color:#000;font-weight:900;letter-spacing:.1em;text-transform:uppercase;
+    padding:14px 26px;border-radius:999px;font-size:14px;
+  }
+  button:hover{filter:brightness(1.15)}
+  @media (max-width:820px){
+    section.stage:nth-child(even) .card,
+    section.stage:nth-child(odd) .card{left:50%}
+    .card{width:min(520px,90vw)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    .card{transition:none}
+  }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="vignette"></div>
+<div id="progress"></div>
+<div id="hud">DEPTH <b id="depth">0</b>M · SPEED <b id="speed">0</b></div>
+
+<main>
+  <section class="stage">
+    <div class="card visible" data-depth="0">
+      <div class="kicker">Scroll to fly · 001</div>
+      <h1><span class="cy">Infinite</span><br/><span class="mg">Tunnel</span></h1>
+      <p>A looping wireframe wormhole + 1,400 particle stars. Your scrollbar is the throttle. Scroll down to dive forward.</p>
+      <div class="scroll-hint"><div class="wheel"></div> scroll to accelerate</div>
+    </div>
+  </section>
+
+  <section class="stage">
+    <div class="card" data-depth="80">
+      <div class="kicker" style="color:#00f0ff;border-color:rgba(0,240,255,.4)">Milestone 01 · 80m</div>
+      <h2>Wireframe warp engaged</h2>
+      <p>Dual nested tubes counter-rotate while neon pulse rings recycle infinitely ahead of the camera. No end. No loading. Just modulo math.</p>
+      <div class="stat"><span>24</span> rings · <span>60</span> segments</div>
+    </div>
+  </section>
+
+  <section class="stage">
+    <div class="card" data-depth="160">
+      <div class="kicker">Milestone 02 · 160m</div>
+      <h2>Starfield parallax</h2>
+      <p>Floating dust drifts, twinkles and wraps around you. Stars behind the camera teleport forward — classic infinite-runner trick.</p>
+      <div class="stat"><span>1400</span> stars · <span>60</span>fps</div>
+    </div>
+  </section>
+
+  <section class="stage">
+    <div class="card" data-depth="240">
+      <div class="kicker" style="color:#ff2fd6;border-color:rgba(255,47,214,.4)">Milestone 03 · 240m</div>
+      <h2>Camera = scrollbar</h2>
+      <p><code>camera.position.z = start - scrollProgress × travel</code>. Smoothed with lerp, plus mouse sway and velocity-based roll for punch.</p>
+      <div class="stat"><span>320</span>m dive · <span>0</span> cuts</div>
+    </div>
+  </section>
+
+  <section class="stage" id="finale">
+    <div class="card" data-depth="320">
+      <div class="kicker">Loop point · 320m</div>
+      <h2>You never left. You looped.</h2>
+      <p>The geometry follows the camera, so the tunnel is endless. Hit the button to warp back to the top — or keep scrolling up / down to surf.</p>
+      <button id="rewind">↺ Rewind to surface</button>
+    </div>
+  </section>
+</main>
+
+<script type="module">
+import * as THREE from 'three';
+
+const canvas = document.getElementById('bg');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x030014);
+scene.fog = new THREE.FogExp2(0x030014, 0.028);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 200);
+const START_Z = 12;
+const TRAVEL = 320;
+camera.position.set(0, 0, START_Z);
+
+// --- Infinite tube: mesh follows camera so walls never end ---
+const TUBE_LEN = 420;
+const outerGeo = new THREE.CylinderGeometry(9, 9, TUBE_LEN, 24, 64, true);
+outerGeo.rotateX(Math.PI/2);
+const outerMat = new THREE.MeshBasicMaterial({ color:0x00f0ff, wireframe:true, transparent:true, opacity:0.28 });
+const outer = new THREE.Mesh(outerGeo, outerMat);
+scene.add(outer);
+
+const innerGeo = new THREE.CylinderGeometry(5.2, 5.2, TUBE_LEN, 16, 48, true);
+innerGeo.rotateX(Math.PI/2);
+const innerMat = new THREE.MeshBasicMaterial({ color:0xff2fd6, wireframe:true, transparent:true, opacity:0.32 });
+const inner = new THREE.Mesh(innerGeo, innerMat);
+scene.add(inner);
+
+// --- Recycled pulse rings (the visible "speed" cue) ---
+const RING_COUNT = 26, RING_SPAN = RING_COUNT * 15;
+const ringGeo = new THREE.TorusGeometry(9, 0.07, 8, 48);
+const rings = [];
+for (let i=0;i<RING_COUNT;i++){
+  const m = new THREE.MeshBasicMaterial({ color: i%2 ? 0xc8ff00 : 0x00f0ff, transparent:true, opacity:0.85 });
+  const r = new THREE.Mesh(ringGeo, m);
+  r.userData.offset = -i*15;
+  scene.add(r); rings.push(r);
+}
+
+// --- Floating particle stars ---
+const STAR_COUNT = 1400, STAR_SPAN = 380;
+const pos = new Float32Array(STAR_COUNT*3);
+const seed = new Float32Array(STAR_COUNT);
+for (let i=0;i<STAR_COUNT;i++){
+  pos[i*3]   = (Math.random()-0.5)*80;
+  pos[i*3+1] = (Math.random()-0.5)*80;
+  pos[i*3+2] = START_Z - Math.random()*STAR_SPAN;
+  seed[i] = Math.random()*Math.PI*2;
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+const starMat = new THREE.PointsMaterial({ color:0xffffff, size:0.18, transparent:true, opacity:0.9, sizeAttenuation:true });
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+// a few colored giants
+const bigGeo = new THREE.BufferGeometry();
+const bigPos = new Float32Array(150*3);
+for (let i=0;i<150;i++){ bigPos[i*3]=(Math.random()-0.5)*60; bigPos[i*3+1]=(Math.random()-0.5)*60; bigPos[i*3+2]=START_Z-Math.random()*STAR_SPAN; }
+bigGeo.setAttribute('position', new THREE.BufferAttribute(bigPos,3));
+const bigStars = new THREE.Points(bigGeo, new THREE.PointsMaterial({ color:0x00f0ff, size:0.45, transparent:true, opacity:0.9 }));
+scene.add(bigStars);
+
+function wrapRange(v, min, max){ const s=max-min; return min + ((((v-min)%s)+s)%s); }
+
+// --- Milestone fade-ins ---
+// Each card declares a depth (m). It fades in once the camera flies within
+// REVEAL_LEAD meters of that depth, so the reveal is bound to camera Z rather
+// than to raw pixel scroll. Cards latch once shown, so rewinding keeps the story.
+// NOTE: must be declared before onScroll() is first invoked (const TDZ).
+const REVEAL_LEAD = 30;
+const cards = [...document.querySelectorAll('.card')].map(el => ({
+  el,
+  depth: parseFloat(el.dataset.depth) || 0,
+  shown: el.classList.contains('visible'),
+}));
+function revealMilestones(depth){
+  for (const c of cards){
+    if (!c.shown && depth >= c.depth - REVEAL_LEAD){
+      c.el.classList.add('visible');
+      c.shown = true;
+    }
+  }
+}
+
+// --- Scroll binding ---
+let targetZ = START_Z, lastY = window.scrollY, scrollVel = 0;
+function maxScroll(){ return Math.max(1, document.documentElement.scrollHeight - window.innerHeight); }
+function onScroll(){
+  const y = window.scrollY;
+  const p = Math.min(1, Math.max(0, y / maxScroll()));
+  targetZ = START_Z - p * TRAVEL;
+  scrollVel = scrollVel*0.8 + Math.abs(y-lastY)*0.2;
+  lastY = y;
+  document.getElementById('progress').style.width = (p*100).toFixed(2)+'%';
+  document.getElementById('depth').textContent = Math.round(p*TRAVEL);
+  revealMilestones(p*TRAVEL);
+}
+window.addEventListener('scroll', onScroll, { passive:true });
+onScroll();
+
+// mouse parallax
+let mx=0,my=0,tx=0,ty=0;
+window.addEventListener('pointermove', e=>{
+  tx = (e.clientX/window.innerWidth - .5);
+  ty = (e.clientY/window.innerHeight - .5);
+});
+
+document.getElementById('rewind').addEventListener('click', ()=>window.scrollTo({top:0,behavior:'smooth'}));
+
+// --- Resize (responsive) ---
+function onResize(){
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.fov = window.innerWidth < 700 ? 85 : 75;
+  camera.updateProjectionMatrix();
+  // Re-read DPR: it changes when the window moves between mixed-DPI monitors.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+window.addEventListener('resize', onResize);
+onResize();
+
+// --- Loop ---
+const clock = new THREE.Clock();
+// Ambient motion (tube spin, ring spin, twinkle) is disabled for users who
+// prefer reduced motion. Scroll-driven camera movement still works, since it
+// is directly user-controlled rather than autonomous animation.
+const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+let running = true;
+
+document.addEventListener('visibilitychange', () => {
+  running = !document.hidden;
+  if (running) clock.getDelta(); // discard the hidden gap so t doesn't jump
+});
+
+function tick(){
+  requestAnimationFrame(tick);
+  if (!running) return;
+  // Freeze the ambient clock at 0 under reduced motion; scroll still drives Z.
+  const animate = !motionQuery.matches;
+  const t = animate ? clock.getElapsedTime() : 0;
+  // smooth camera dive
+  camera.position.z += (targetZ - camera.position.z) * 0.075;
+  mx += (tx-mx)*0.05; my += (ty-my)*0.05;
+  camera.position.x = mx*1.6;
+  camera.position.y = -my*1.2 + Math.sin(t*0.6)*0.15;
+  camera.rotation.z = -mx*0.25 - Math.min(0.35, scrollVel*0.004);
+  camera.rotation.y = -mx*0.25;
+
+  // tubes follow camera => infinite
+  outer.position.z = camera.position.z - TUBE_LEN/2 + 30;
+  inner.position.z = camera.position.z - TUBE_LEN/2 + 30;
+  outer.rotation.z = t*0.08;
+  inner.rotation.z = -t*0.12;
+  outerMat.opacity = 0.22 + Math.sin(t*2)*0.06 + Math.min(0.2, scrollVel*0.004);
+  document.getElementById('speed').textContent = Math.round(scrollVel*3 + 12);
+
+  // recycle rings ahead
+  for (const r of rings){
+    // place ring at repeating slot relative to camera
+    const rel = (((r.userData.offset - camera.position.z) % RING_SPAN) + RING_SPAN) % RING_SPAN;
+    r.position.z = camera.position.z + 12 - rel;
+    const s = 1 - (rel/RING_SPAN)*0.25;
+    r.scale.setScalar(s);
+    r.rotation.z = t*0.4 + r.userData.offset;
+  }
+
+  // float + wrap stars
+  const p = starGeo.attributes.position.array;
+  for (let i=0;i<STAR_COUNT;i++){
+    // Only bob when the ambient clock advances. With a frozen t this term would
+    // become a constant per-frame delta and drift the starfield off-screen.
+    if (animate){
+      p[i*3]   += Math.sin(t*0.8 + seed[i]) * 0.0022;
+      p[i*3+1] += Math.cos(t*0.7 + seed[i]) * 0.0022;
+    }
+    if (p[i*3+2] > camera.position.z + 8) p[i*3+2] -= STAR_SPAN;
+    if (p[i*3+2] < camera.position.z - STAR_SPAN + 8) p[i*3+2] += STAR_SPAN;
+  }
+  starGeo.attributes.position.needsUpdate = true;
+  const bp = bigGeo.attributes.position.array;
+  for (let i=0;i<150;i++){
+    if (bp[i*3+2] > camera.position.z + 8) bp[i*3+2] -= STAR_SPAN;
+    if (bp[i*3+2] < camera.position.z - STAR_SPAN + 8) bp[i*3+2] += STAR_SPAN;
+  }
+  bigGeo.attributes.position.needsUpdate = true;
+  starMat.opacity = 0.7 + Math.sin(t*3)*0.15;
+
+  scrollVel *= 0.94;
+  renderer.render(scene, camera);
+}
+tick();
+</script>
+</body>
+</html>
